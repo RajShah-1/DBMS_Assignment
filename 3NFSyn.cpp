@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -23,6 +24,14 @@ class Relation {
   unordered_map<string, int> attrIndex;
   vector<vector<int>> Decomposition;
   vector<FuncDependency> F;
+  string attrListToStr(vector<int> attrs);
+  bool isFDCover(vector<FuncDependency>& F1, vector<FuncDependency>& F2);
+  void computeAttrsClosure(vector<int>& attrs, vector<FuncDependency>& F,
+                           vector<bool>& attrsCover);
+  bool areFDEq(vector<FuncDependency>& F1, vector<FuncDependency>& F2);
+  void minCoverF(void);
+  bool isSuperKey(vector<int>& attrs);
+  vector<int> getPK(void);
 
  public:
   void readFD(FuncDependency& newFD);
@@ -30,39 +39,155 @@ class Relation {
   void readDecomposition(void);
   void printFD(const FuncDependency& FD);
   void printDecomposition(void);
-  bool isFDCover(vector<FuncDependency>& F1, vector<FuncDependency>& F2);
-  void computeAttrsCover(vector<int>& attrs, vector<FuncDependency>& F,
-                         vector<bool>& attrsCover);
-  bool areFDEq(vector<FuncDependency>& F1, vector<FuncDependency>& F2);
-
-  void test(void);
+  void syn3NFDecomposition(void);
 };
-
-void Relation::test(void) {
-  vector<bool> ACover(attributes.size(), false);
-  vector<int> attrs = {1, 3};
-  this->computeAttrsCover(attrs, this->F, ACover);
-  cout << "cover: ";
-  for (int i = 0; i < ACover.size(); ++i) {
-    if (ACover[i]) {
-      cout << this->attributes[i] << " ";
-    }
-  }
-  cout << "\n";
-}
 
 int main() {
   // Taking R as an input
   Relation R;
   int numAttrs, numFDs;
   R.readRelation();
-  R.test();
+  R.syn3NFDecomposition();
+  cout << "========================3NF Generated "
+          "successfully==============================\n";
   return 0;
 }
 
 // =================================================================
-void Relation::computeAttrsCover(vector<int>& X, vector<FuncDependency>& F,
-                                 vector<bool>& XCover) {
+void Relation::syn3NFDecomposition(void) {
+  // Find minCover
+  this->minCoverF();
+  unordered_map<string, vector<int>> orgAttrs;
+  unordered_map<string, unordered_set<int>> rhs;
+  for (FuncDependency fd : this->F) {
+    string attrStr = this->attrListToStr(fd.lhs);
+    if (orgAttrs.find(attrStr) == orgAttrs.end()) {
+      orgAttrs.insert(make_pair(attrStr, fd.lhs));
+    }
+    for (int attr : fd.rhs) {
+      rhs[attrStr].insert(attr);
+    }
+  }
+
+  unordered_set<string> prevDecomps;
+  bool hasKey = false;
+  for (auto orgAttr : orgAttrs) {
+    vector<int> Ri;
+    for (int attrID : orgAttr.second) {
+      Ri.push_back(attrID);
+    }
+    for (int attrID : rhs[orgAttr.first]) {
+      Ri.push_back(attrID);
+    }
+    string attrStr = this->attrListToStr(Ri);
+    if (prevDecomps.find(attrStr) == prevDecomps.end()) {
+      this->Decomposition.push_back(Ri);
+    }
+    prevDecomps.insert(attrStr);
+    if (this->isSuperKey(Ri)) {
+      hasKey = true;
+    }
+  }
+  if (!hasKey) {
+    vector<int> PK = this->getPK();
+    // cout << "PK: ";
+    // for (int i = 0; i < PK.size(); ++i) {
+    //   cout << attributes[PK[i]] << " ";
+    // }
+    // cout << "\n";
+    this->Decomposition.push_back(PK);
+  }
+  this->printDecomposition();
+}
+
+vector<int> Relation::getPK(void) {
+  int numAttrs = this->attributes.size();
+  vector<int> PK(numAttrs);
+
+  for (int i = 0; i < numAttrs; ++i) {
+    PK[i] = i;
+  }
+  // Attempt to remove one attribute at a time
+  int removedAttr;
+  for (vector<int>::iterator it = PK.begin(); it != PK.end();) {
+    removedAttr = *it;
+    PK.erase(it);
+    if (!this->isSuperKey(PK)) {
+      it = PK.insert(it, removedAttr);
+      it++;
+    }
+  }
+  return PK;
+}
+
+string Relation::attrListToStr(vector<int> attrs) {
+  string str = "";
+  sort(attrs.begin(), attrs.end());
+  for (int attr : attrs) {
+    str = str + "_" + to_string(attr);
+  }
+  return str;
+}
+
+bool Relation::isSuperKey(vector<int>& attrs) {
+  int numAttrs = this->attributes.size();
+  vector<bool> AClosure(numAttrs, false);
+  this->computeAttrsClosure(attrs, this->F, AClosure);
+  for (int i = 0; i < numAttrs; ++i) {
+    if (!AClosure[i]) return false;
+  }
+  return true;
+}
+
+// Updates F = minCover(F)
+void Relation::minCoverF(void) {
+  // Make a deep copy of F and delete it
+  vector<FuncDependency> Forg = this->F;
+  this->F.clear();
+
+  // make sure there is only one attr on the rhs of each fd
+  FuncDependency newFD;
+  for (FuncDependency& fd : Forg) {
+    newFD.lhs = fd.lhs;
+    for (int attrID : fd.rhs) {
+      newFD.rhs = {attrID};
+      this->F.push_back(newFD);
+    }
+  }
+
+  // Removing extraneous attributes
+  int removedAttr;
+  for (FuncDependency& fd : this->F) {
+    for (auto it = fd.lhs.begin(); it != fd.lhs.end();) {
+      removedAttr = *it;
+      fd.lhs.erase(it);
+      if (!this->areFDEq(this->F, Forg)) {
+        it = fd.lhs.insert(it, removedAttr);
+        it++;
+      }
+    }
+  }
+
+  // Remove one fd and check it the closure changes
+  FuncDependency remFD;
+  for (auto it = this->F.begin(); it != this->F.end();) {
+    remFD = *it;
+    F.erase(it);
+    if (!this->areFDEq(this->F, Forg)) {
+      it = this->F.insert(it, remFD);
+      it++;
+    }
+  }
+
+  // Print minCover
+  cout << "MinCover:\n";
+  for (FuncDependency fd : this->F) {
+    this->printFD(fd);
+  }
+}
+
+void Relation::computeAttrsClosure(vector<int>& X, vector<FuncDependency>& F,
+                                   vector<bool>& XCover) {
   unordered_set<int> X_plus;
   for (int attr : X) {
     X_plus.insert(attr);
@@ -71,7 +196,7 @@ void Relation::computeAttrsCover(vector<int>& X, vector<FuncDependency>& F,
   bool isSubset;
   do {
     noChange = true;
-    for (FuncDependency fd : F) {
+    for (FuncDependency& fd : F) {
       // check if fd.lhs is a subset of X_plus
       isSubset = true;
       for (int lhsAttr : fd.lhs) {
@@ -102,14 +227,18 @@ void Relation::computeAttrsCover(vector<int>& X, vector<FuncDependency>& F,
 bool Relation::isFDCover(vector<FuncDependency>& F1,
                          vector<FuncDependency>& F2) {
   int numAttrs = this->attributes.size();
-  for (FuncDependency fd1 : F1) {
+  for (FuncDependency& fd1 : F1) {
     vector<bool> XF1Cover(numAttrs, false);
     vector<bool> XF2Cover(numAttrs, false);
-    this->computeAttrsCover(fd1.lhs, F1, XF1Cover);
-    this->computeAttrsCover(fd1.lhs, F2, XF2Cover);
+    this->computeAttrsClosure(fd1.lhs, F1, XF1Cover);
+    this->computeAttrsClosure(fd1.lhs, F2, XF2Cover);
+
     // XF1Cover must include XF2Cover
     for (int i = 0; i < numAttrs; ++i) {
       if (XF2Cover[i] == true && XF1Cover[i] == false) {
+        return false;
+      }
+      if (XF1Cover[i] == true && XF2Cover[i] == false) {
         return false;
       }
     }
@@ -118,7 +247,7 @@ bool Relation::isFDCover(vector<FuncDependency>& F1,
 }
 
 bool Relation::areFDEq(vector<FuncDependency>& F1, vector<FuncDependency>& F2) {
-  return isFDCover(F1, F2) && isFDCover(F2, F1);
+  return (isFDCover(F1, F2) && isFDCover(F2, F1));
 }
 
 void Relation::readDecomposition(void) {
@@ -155,12 +284,12 @@ void Relation::readDecomposition(void) {
 
 void Relation::printDecomposition(void) {
   cout << "Decomposition: \n";
-  for (vector<int>& Ri : this->Decomposition) {
-    cout << "Relation: { ";
-    for (int attrID : Ri) {
+  for (int i = 0; i < this->Decomposition.size(); ++i) {
+    cout << "R" << i << ": ( ";
+    for (int attrID : this->Decomposition[i]) {
       cout << this->attributes[attrID] << " ";
     }
-    cout << " }\n";
+    cout << " )\n";
   }
 }
 

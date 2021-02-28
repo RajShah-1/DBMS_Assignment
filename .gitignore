@@ -1,0 +1,4 @@
+# Ignore all the files without an extension (obj files in this case)
+*
+!/**/
+!*.*

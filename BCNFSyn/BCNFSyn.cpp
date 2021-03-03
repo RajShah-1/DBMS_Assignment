@@ -1,8 +1,12 @@
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <queue>
+#include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using namespace std;
@@ -20,12 +24,11 @@ class Relation {
 
   // maps attribute names to an integer
   unordered_map<string, int> attrIndex;
-  vector<FuncDependency> F;
   vector<vector<int>> Decomposition;
-
-  void initLJCheck(vector<vector<string>>& S);
-  void LJAddFD(vector<vector<string>>& S);
-  void printS(vector<vector<string>>& S);
+  vector<FuncDependency> F;
+  string attrListToStr(vector<int> attrs);
+  void computeAttrsClosure(vector<int>& attrs, vector<FuncDependency>& F,
+                           vector<bool>& attrsClosure);
 
  public:
   void readFD(FuncDependency& newFD);
@@ -33,103 +36,133 @@ class Relation {
   void readDecomposition(void);
   void printFD(const FuncDependency& FD);
   void printDecomposition(void);
-  bool isLJDecomposition(void);
+  bool checkBCNF(unordered_set<int>& attrs, unordered_set<int>& X,
+                 vector<bool>& XClosure);
+  void BCNFDecompose(void);
 };
 
 int main() {
   // Taking R as an input
   Relation R;
-  int numAttrs, numFDs;
   R.readRelation();
-  R.readDecomposition();
+  R.BCNFDecompose();
   R.printDecomposition();
-  bool isLJDecomp = R.isLJDecomposition();
-  cout << "=========================\n";
-  if (isLJDecomp) {
-    cout << "The given decomposition is a lossless join decomposition\n";
-  } else {
-    cout << "The given decomposition is not a lossless join decomposition\n";
-  }
-  cout << "=========================\n";
+  cout << "========================BCNF Generated "
+          "successfully==============================\n";
   return 0;
 }
 
-bool Relation::isLJDecomposition(void) {
-  vector<vector<string>> S(this->Decomposition.size(),
-                           vector<string>(this->attributes.size(), "b"));
-  this->initLJCheck(S);
-  this->LJAddFD(S);
-  printS(S);
-  bool isLJDecomposition;
-  for (vector<string> Si : S) {
-    isLJDecomposition = true;
-    for (string Sij : Si) {
-      if (Sij != "a") {
-        isLJDecomposition = false;
+void Relation::BCNFDecompose(void) {
+  queue<vector<int>> decompQueue;
+  int iter_num = 0;
+  vector<int> decomp;
+  for (int i = 0; i < this->attributes.size(); ++i) {
+    decomp.push_back(i);
+  }
+  decompQueue.push(decomp);
+  while (!decompQueue.empty()) {
+    decomp = decompQueue.front();
+    iter_num++;
+    decompQueue.pop();
+    unordered_set<int> decompSet(decomp.begin(), decomp.end());
+    // find a problematic FD from the F Closure
+    // check all subsets of the attributes
+    int decompSize = decomp.size();
+
+    bool violateBCNF = false;
+    for (long long i = 0; i <= (long long)pow(2, decompSize); ++i) {
+      unordered_set<int> X;
+      for (long long j = 0; j < decompSize; ++j) {
+        if ((i & (1 << j)) != 0) {
+          X.insert(decomp[j]);
+        }
+      }
+      vector<bool> XClosure(this->attributes.size());
+      if (!this->checkBCNF(decompSet, X, XClosure)) {
+        vector<int> XUYVec, YVec, QMinYVec;
+        for (int id = 0; id < XClosure.size(); ++id) {
+          if (decompSet.find(id) == decompSet.end()) continue;
+          if (XClosure[id] && X.find(id) == X.end()) {
+            XUYVec.push_back(id);
+          } else if (X.find(id) != X.end()) {
+            XUYVec.push_back(id);
+            QMinYVec.push_back(id);
+          } else {
+            QMinYVec.push_back(id);
+          }
+        }
+        if (XUYVec.size() > 0) decompQueue.push(XUYVec);
+        if (QMinYVec.size() > 0) decompQueue.push(QMinYVec);
+        violateBCNF = true;
         break;
       }
     }
-    if (isLJDecomposition) return true;
-  }
-  return false;
-}
-
-void Relation::initLJCheck(vector<vector<string>>& S) {
-  for (int i = 0; i < S.size(); ++i) {
-    for (int attrID : this->Decomposition[i]) {
-      S[i][attrID] = 'a';
+    if (!violateBCNF) {
+      this->Decomposition.push_back(decomp);
     }
   }
 }
 
-void Relation::LJAddFD(vector<vector<string>>& S) {
-  // iterate over FDs
-  bool noChange;
+bool Relation::checkBCNF(unordered_set<int>& attrs, unordered_set<int>& X,
+                         vector<bool>& XClosure) {
   int numAttrs = this->attributes.size();
-  // Repeat until there is no change
+  vector<int> XVec;
+  for (int Xattr : X) {
+    XVec.push_back(Xattr);
+  }
+  this->computeAttrsClosure(XVec, this->F, XClosure);
+  bool isTrivial = true;
+  for (int attrID : attrs) {
+    if (X.find(attrID) == X.end() && XClosure[attrID]) {
+      isTrivial = false;
+      break;
+    }
+  }
+
+  bool isSuperKey = true;
+  for (int attrID : attrs) {
+    if (!XClosure[attrID]) {
+      isSuperKey = false;
+      break;
+    }
+  }
+  return isTrivial || isSuperKey;
+}
+
+void Relation::computeAttrsClosure(vector<int>& X, vector<FuncDependency>& F,
+                                   vector<bool>& XCover) {
+  unordered_set<int> X_plus;
+  for (int attr : X) {
+    X_plus.insert(attr);
+  }
+  bool noChange;
+  bool isSubset;
   do {
     noChange = true;
-    for (FuncDependency& FD : this->F) {
-      // FD: lhs -> rhs
-      // get all the rows having same values for lhs
-      vector<int> sameX(numAttrs, true);
-      for (int lhsAttr : FD.lhs) {
-        for (int i = 0; i < S.size(); ++i) {
-          if (S[i][lhsAttr] != "a") {
-            sameX[i] = false;
-          }
+    for (FuncDependency& fd : F) {
+      // check if fd.lhs is a subset of X_plus
+      isSubset = true;
+      for (int lhsAttr : fd.lhs) {
+        if (X_plus.find(lhsAttr) == X_plus.end()) {
+          isSubset = false;
+          break;
         }
       }
-      bool isA;
-      for (int rhsAttr : FD.rhs) {
-        isA = false;
-        for (int i = 0; i < S.size(); ++i) {
-          if (!sameX[i]) continue;
-          if (S[i][rhsAttr] == "a") {
-            isA = true;
-            break;
-          }
-        }
-        if (!isA) continue;
-        for (int i = 0; i < S.size(); ++i) {
-          if (!sameX[i]) continue;
-          if (S[i][rhsAttr] != "a") {
-            noChange = true;
-            S[i][rhsAttr] = "a";
-          }
+      if (!isSubset) {
+        continue;
+      }
+      // if lhs is a subset of X_plus
+      // X_plus = X_plus union rhs of fd
+      for (int rhsAttr : fd.rhs) {
+        if (X_plus.find(rhsAttr) == X_plus.end()) {
+          noChange = false;
+          X_plus.insert(rhsAttr);
         }
       }
     }
   } while (!noChange);
-}
-
-void Relation::printS(vector<vector<string>>& S) {
-  cout << "Priniting S:\n";
-  for (int i = 0; i < S.size(); ++i) {
-    for (int j = 0; j < S[i].size(); ++j) {
-      cout << setw(2) << S[i][j] << " ";
-    }
-    cout << "\n";
+  for (int X_plus_elem : X_plus) {
+    XCover[X_plus_elem] = true;
   }
 }
 
@@ -167,12 +200,12 @@ void Relation::readDecomposition(void) {
 
 void Relation::printDecomposition(void) {
   cout << "Decomposition: \n";
-  for (vector<int>& Ri : this->Decomposition) {
-    cout << "Relation: { ";
-    for (int attrID : Ri) {
+  for (int i = 0; i < this->Decomposition.size(); ++i) {
+    cout << "R" << i << ": ( ";
+    for (int attrID : this->Decomposition[i]) {
       cout << this->attributes[attrID] << " ";
     }
-    cout << " }\n";
+    cout << " )\n";
   }
 }
 
@@ -247,6 +280,14 @@ void Relation::readRelation(void) {
   for (int i = 0; i < numFDs; ++i) {
     readFD(this->F[i]);
   }
+
+  cout << "Entered Attributes: { ";
+  for (string attrName : attributes) {
+    cout << attrName << " ";
+  }
+  cout << "}\n";
+
+  cout << "Entered F:\n";
   for (FuncDependency& fd : this->F) {
     printFD(fd);
   }

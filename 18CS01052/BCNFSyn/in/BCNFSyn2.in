@@ -1,4 +1,0 @@
-3 2
-student course instructor
-{ student course } -> { instructor }
-{ instructor } -> { course }

@@ -1,0 +1,8 @@
+6 3
+ssn ename pno pname ploc hours
+{ ssn } -> { ename }
+{ pno } -> { pname ploc }
+{ ssn pno } -> { hours }
+2
+{ ename ploc }
+{ ssn pno hours pname ploc }

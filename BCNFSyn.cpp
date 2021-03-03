@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <queue>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -34,38 +36,100 @@ class Relation {
   void readDecomposition(void);
   void printFD(const FuncDependency& FD);
   void printDecomposition(void);
-  bool checkBCNF(unordered_set<int>& attrs, unordered_set<int> X,
+  bool checkBCNF(unordered_set<int>& attrs, unordered_set<int>& X,
                  vector<bool>& XClosure);
   void BCNFDecompose(void);
-  void BCNFDecomposeRec(unordered_set<int> X);
 };
 
 int main() {
   // Taking R as an input
   Relation R;
   R.readRelation();
+  R.BCNFDecompose();
+  R.printDecomposition();
   cout << "========================BCNF Generated "
           "successfully==============================\n";
   return 0;
 }
 
-void Relation::BCNFDecompose(void){
-  // Iterate 
-}
-void Relation::BCNFDecomposeRec(unordered_set<int> X){
+void Relation::BCNFDecompose(void) {
+  // Iterate
+  queue<vector<int>> decompQueue;
+  int iter_num = 0;
+  vector<int> decomp;
+  for (int i = 0; i < this->attributes.size(); ++i) {
+    decomp.push_back(i);
+  }
+  decompQueue.push(decomp);
+  while (!decompQueue.empty()) {
+    decomp = decompQueue.front();
+    iter_num++;
+    decompQueue.pop();
+    unordered_set<int> decompSet(decomp.begin(), decomp.end());
+    // find a problematic FD
+    // check all subsets of the attributes
+    int decompSize = decomp.size();
 
+    bool violateBCNF = false;
+    for (long long i = 0; i <= (long long)pow(2, decompSize); ++i) {
+      unordered_set<int> X;
+      for (long long j = 0; j < decompSize; ++j) {
+        if ((i & (1 << j)) != 0) {
+          X.insert(i);
+        }
+      }
+      vector<bool> XClosure(this->attributes.size());
+      if (!this->checkBCNF(decompSet, X, XClosure)) {
+        // cout << "Closure: ";
+        // for (int i = 0; i < this->attributes.size(); ++i) {
+        //   if (XClosure[i]) {
+        //     cout << this->attributes[i] << " ";
+        //   }
+        // }
+        // cout << "\n";
+        vector<int> XUYVec, YVec, QMinYVec;
+        for (int id = 0; id < XClosure.size(); ++id) {
+          if(decompSet.find(id) == decompSet.end()) continue;
+          if (XClosure[id] && X.find(id) == X.end()) {
+            XUYVec.push_back(id);
+          } else if (X.find(id) != X.end()) {
+            XUYVec.push_back(id);
+            QMinYVec.push_back(id);
+          } else {
+            QMinYVec.push_back(id);
+          }
+        }
+        if (XUYVec.size() > 0) decompQueue.push(XUYVec);
+        if (QMinYVec.size() > 0) decompQueue.push(QMinYVec);
+        // cout << "Test: " << iter_num << "\n";
+        // cout << "X U V: ";
+        // for(int attr:XUYVec){
+        //   cout << attr << " ";
+        // }
+        // cout << "\n";
+        // cout << "Q - Y: ";
+        // for(int attr:QMinYVec){
+        //   cout << attr << " ";
+        // }
+        // cout << "\n";
+        violateBCNF = true;
+        break;
+      }
+    }
+    if (!violateBCNF) {
+      this->Decomposition.push_back(decomp);
+    }
+  }
 }
 
-bool Relation::checkBCNF(unordered_set<int>& attrs, unordered_set<int> X,
+bool Relation::checkBCNF(unordered_set<int>& attrs, unordered_set<int>& X,
                          vector<bool>& XClosure) {
   int numAttrs = this->attributes.size();
   vector<int> XVec;
   for (int Xattr : X) {
     XVec.push_back(Xattr);
   }
-  XClosure = vector<bool>(numAttrs, false);
   this->computeAttrsClosure(XVec, this->F, XClosure);
-
   bool isTrivial = true;
   for (int attrID : attrs) {
     if (X.find(attrID) == X.end() && XClosure[attrID]) {

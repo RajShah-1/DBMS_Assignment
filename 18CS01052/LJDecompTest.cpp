@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using namespace std;
@@ -26,6 +27,11 @@ class Relation {
   void initLJCheck(vector<vector<string>>& S);
   void LJAddFD(vector<vector<string>>& S);
   void printS(vector<vector<string>>& S);
+  string symListToStr(const vector<string>& attrs);
+  void fillSameLHS(unordered_map<string, vector<int>>& sameLHS,
+                   vector<vector<string>>& S, vector<int>& lhs);
+  void makeRHSSame(vector<int> sameValRows, vector<vector<string>>& S,
+                   vector<int>& rhs);
 
  public:
   void readFD(FuncDependency& newFD);
@@ -77,7 +83,7 @@ bool Relation::isLJDecomposition(void) {
 void Relation::initLJCheck(vector<vector<string>>& S) {
   for (int i = 0; i < S.size(); ++i) {
     for (int attrID : this->Decomposition[i]) {
-      S[i][attrID] = 'a';
+      S[i][attrID] = "a";
     }
   }
 }
@@ -92,35 +98,86 @@ void Relation::LJAddFD(vector<vector<string>>& S) {
     for (FuncDependency& FD : this->F) {
       // FD: lhs -> rhs
       // get all the rows having same values for lhs
-      vector<int> sameX(numAttrs, true);
-      for (int lhsAttr : FD.lhs) {
-        for (int i = 0; i < S.size(); ++i) {
-          if (S[i][lhsAttr] != "a") {
-            sameX[i] = false;
-          }
+      unordered_map<string, vector<int>> sameLHS;
+      this->fillSameLHS(sameLHS, S, FD.lhs);
+      // Make the symbols for attrs on rhs same
+      for (pair<string, vector<int>> sameValRows : sameLHS) {
+        if (sameValRows.second.size() > 1) {
+          this->makeRHSSame(sameValRows.second, S, FD.rhs);
         }
       }
-      bool isA;
-      for (int rhsAttr : FD.rhs) {
-        isA = false;
-        for (int i = 0; i < S.size(); ++i) {
-          if (!sameX[i]) continue;
-          if (S[i][rhsAttr] == "a") {
-            isA = true;
-            break;
-          }
+      this->printS(S);
+    }
+  } while (!noChange);
+}
+
+// Handles all the corner cases
+void Relation::makeRHSSame(vector<int> sameValRows, vector<vector<string>>& S,
+                           vector<int>& rhs) {
+  if (sameValRows.size() <= 1) return;
+  int firstIndex = sameValRows[0];
+  string sameCSym = "c" + to_string(firstIndex);
+  // For each col on rhs
+  for (int col : rhs) {
+    // Iterate over all rows having same vals on the lhs
+    // If one of them contains 'a' -> make all of them a
+    // If one of them contains 'Ci' -> make all Ci
+    // If the rows contain Cj Ck... -> replace all Cj Ck ... with Ci in that col
+    //    and make all Ci
+    bool isA = false;
+    unordered_set<string> Cis;
+    for (int row : sameValRows) {
+      if (S[row][col] == "a") {
+        isA = true;
+      } else if (S[row][col].substr(0, 1) == "c") {
+        Cis.insert(S[row][col]);
+      }
+      // Mark current row with sameCSym
+      // (Used instead of same bij to avoid confusion)
+      // same bij -> ci (col index is not used in the algo)
+      S[row][col] = sameCSym;
+    }
+    if (isA) {
+      for (int row = 0; row < S.size(); ++row) {
+        // iterate through all the sameRows and make them 'a'
+        if (S[row][col] == sameCSym) {
+          S[row][col] = "a";
         }
-        if (!isA) continue;
-        for (int i = 0; i < S.size(); ++i) {
-          if (!sameX[i]) continue;
-          if (S[i][rhsAttr] != "a") {
-            noChange = true;
-            S[i][rhsAttr] = "a";
-          }
+        // also make all the rows with Ci (Ci present vector Cis) 'a'
+        if (Cis.find(S[row][col]) != Cis.end()) {
+          S[row][col] = "a";
+        }
+      }
+    } else {
+      for (int row = 0; row < S.size(); ++row) {
+        // Find the rows with Ci in Vector Cis
+        // Make all the Ci in Cis -> sameCSym
+        if (Cis.find(S[row][col]) != Cis.end()) {
+          S[row][col] = sameCSym;
         }
       }
     }
-  } while (!noChange);
+  }
+}
+void Relation::fillSameLHS(unordered_map<string, vector<int>>& sameLHS,
+                           vector<vector<string>>& S, vector<int>& lhs) {
+  // iterate over all rows
+  for (int i = 0; i < S.size(); ++i) {
+    // iterate over all attrs on the lhs of the fd
+    vector<string> syms;
+    for (int attrID : lhs) {
+      syms.push_back(S[i][attrID]);
+    }
+    sameLHS[this->symListToStr(syms)].push_back(i);
+  }
+}
+
+string Relation::symListToStr(const vector<string>& syms) {
+  string str = "";
+  for (string sym : syms) {
+    str = str + "_" + sym;
+  }
+  return str;
 }
 
 void Relation::printS(vector<vector<string>>& S) {

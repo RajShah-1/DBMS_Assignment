@@ -53,7 +53,6 @@ int main() {
 }
 
 void Relation::BCNFDecompose(void) {
-  // Iterate
   queue<vector<int>> decompQueue;
   int iter_num = 0;
   vector<int> decomp;
@@ -66,7 +65,7 @@ void Relation::BCNFDecompose(void) {
     iter_num++;
     decompQueue.pop();
     unordered_set<int> decompSet(decomp.begin(), decomp.end());
-    // find a problematic FD
+    // find a problematic FD from the F Closure
     // check all subsets of the attributes
     int decompSize = decomp.size();
 

@@ -1,0 +1,34 @@
+Enter number of attributes in the relation: Enter number of Functional Dependencies in the relation: Enter 6 Attributes:
+Enter FDs:
+Format { <attr1>, <attr2> } -> { <attr3>, <attr4> }
+Entered Attributes: { ssn ename pno pname ploc hours }
+Entered F:
+{ ssn } -> { ename }
+{ pno } -> { pname ploc }
+{ ssn pno } -> { hours }
+Enter number of relations in the decompositions: Enter the relations:
+Format: { <attr1> <attr2> ... <attrk> }
+Decomposition: 
+Relation: { ssn ename  }
+Relation: { pno pname ploc  }
+Relation: { ssn pno hours  }
+Steps:
+Priniting S:
+ a  a  b  b  b  b 
+ b  b  a  a  a  b 
+ a  a  a  b  b  a 
+Priniting S:
+ a  a  b  b  b  b 
+ b  b  a  a  a  b 
+ a  a  a  a  a  a 
+Priniting S:
+ a  a  b  b  b  b 
+ b  b  a  a  a  b 
+ a  a  a  a  a  a 
+Priniting S:
+ a  a  b  b  b  b 
+ b  b  a  a  a  b 
+ a  a  a  a  a  a 
+=========================
+The given decomposition is a lossless join decomposition
+=========================

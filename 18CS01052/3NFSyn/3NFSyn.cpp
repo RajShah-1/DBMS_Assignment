@@ -363,6 +363,14 @@ void Relation::readRelation(void) {
   for (int i = 0; i < numFDs; ++i) {
     readFD(this->F[i]);
   }
+
+  cout << "Entered Attributes: { ";
+  for (string attrName : attributes) {
+    cout << attrName << " ";
+  }
+  cout << "}\n";
+
+  cout << "Entered F:\n";
   for (FuncDependency& fd : this->F) {
     printFD(fd);
   }

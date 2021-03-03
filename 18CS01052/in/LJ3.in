@@ -1,0 +1,9 @@
+6 3
+A B C D E F
+{ A } -> { B }
+{ B } -> { C D E F }
+{ C F } -> { B }
+3
+{ A C D }
+{ A E F }
+{ B C F }
